@@ -1,0 +1,6 @@
+{
+  "name": "Dataset Studio",
+  "description": "Aplikasi penangkap dataset gambar untuk pelatihan machine learning dengan auto-segmentasi, augmentasi variasi data, rasio 1:1, 4:3, 16:9, dashboard statistik Recharts per kategori dan aspek rasio, serta ekspor JSON/CSV.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
