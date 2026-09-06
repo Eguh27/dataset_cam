@@ -9,6 +9,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
@@ -60,6 +61,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -93,8 +95,11 @@ import com.example.ui.components.AspectRatioViewfinderMask
 import com.example.ui.components.BlurMeterPill
 import com.example.ui.components.BlurSettingsDialog
 import com.example.ui.components.BlurWarningBanner
+import com.example.ui.components.CameraFlashMode
 import com.example.ui.components.DatasetManagementSheet
+import com.example.ui.components.FlashModeSelectionDialog
 import com.example.ui.components.GlassBox
+import com.example.ui.components.ProjectSwitchBottomSheet
 import com.example.ui.components.LiquidPulseRing
 import com.example.ui.components.MlPresetModal
 import com.example.ui.theme.GlassBorder
@@ -138,7 +143,11 @@ fun CaptureScreen(
     var showDatasetManagementSheet by remember { mutableStateOf(false) }
     var showMlPresetModal by remember { mutableStateOf(false) }
     var showAspectResolutionSheet by remember { mutableStateOf(false) }
-    var flashSimulated by remember { mutableStateOf(false) }
+    var showProjectSwitchSheet by remember { mutableStateOf(false) }
+    val activeProject by viewModel.activeProject.collectAsState()
+    var flashMode by remember { mutableStateOf(CameraFlashMode.OFF) }
+    var showFlashDialog by remember { mutableStateOf(false) }
+    var activeCamera by remember { mutableStateOf<Camera?>(null) }
     val selectedMlPreset by viewModel.selectedMlPreset.collectAsState()
     val compressionQuality by viewModel.compressionQuality.collectAsState()
     val currentDim = viewModel.currentDimension
@@ -174,6 +183,41 @@ fun CaptureScreen(
             .build()
     }
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+
+    // Synchronize hardware camera flash mode and torch (Always-on)
+    LaunchedEffect(flashMode, activeCamera) {
+        val cam = activeCamera
+        when (flashMode) {
+            CameraFlashMode.AUTO -> {
+                imageCapture.flashMode = ImageCapture.FLASH_MODE_AUTO
+                try { cam?.cameraControl?.enableTorch(false) } catch (_: Exception) {}
+            }
+            CameraFlashMode.OFF -> {
+                imageCapture.flashMode = ImageCapture.FLASH_MODE_OFF
+                try { cam?.cameraControl?.enableTorch(false) } catch (_: Exception) {}
+            }
+            CameraFlashMode.ON -> {
+                imageCapture.flashMode = ImageCapture.FLASH_MODE_ON
+                try { cam?.cameraControl?.enableTorch(false) } catch (_: Exception) {}
+            }
+            CameraFlashMode.ALWAYS_ON -> {
+                imageCapture.flashMode = ImageCapture.FLASH_MODE_OFF
+                try {
+                    if (cam?.cameraInfo?.hasFlashUnit() == true) {
+                        cam.cameraControl.enableTorch(true)
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    DisposableEffect(activeCamera) {
+        onDispose {
+            try {
+                activeCamera?.cameraControl?.enableTorch(false)
+            } catch (_: Exception) {}
+        }
+    }
 
     // Set real-time frame analyzer for zero-copy blur & sharpness calculation
     LaunchedEffect(blurDetectionEnabled, blurThreshold) {
@@ -253,13 +297,14 @@ fun CaptureScreen(
                                     .build()
 
                                 cameraProvider.unbindAll()
-                                cameraProvider.bindToLifecycle(
+                                val camera = cameraProvider.bindToLifecycle(
                                     lifecycleOwner,
                                     cameraSelector,
                                     preview,
                                     imageCapture,
                                     imageAnalysis
                                 )
+                                activeCamera = camera
                             } catch (exc: Exception) {
                                 // Camera bind fallback
                             }
@@ -279,13 +324,14 @@ fun CaptureScreen(
                                     .build()
 
                                 cameraProvider.unbindAll()
-                                cameraProvider.bindToLifecycle(
+                                val camera = cameraProvider.bindToLifecycle(
                                     lifecycleOwner,
                                     cameraSelector,
                                     preview,
                                     imageCapture,
                                     imageAnalysis
                                 )
+                                activeCamera = camera
                             } catch (e: Exception) {
                                 // Fallback
                             }
@@ -378,32 +424,23 @@ fun CaptureScreen(
                 accentColor = Color(0x70FFFFFF)
             )
 
-            // Simulated flash screen flash
-            if (flashSimulated) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.White.copy(alpha = 0.8f))
-                )
-            }
-
             // ==========================================
-            // TOP BAR (Matching Mockup Viewfinder Header)
+            // TOP BAR (Responsive Viewfinder Header)
             // ==========================================
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Left: Close / Reset Button (✕)
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
-                        .background(Color(0x40000000))
+                        .background(Color(0x50000000))
                         .border(1.dp, GlassBorder, CircleShape)
                         .clickable {
                             viewModel.clearNotification()
@@ -419,25 +456,55 @@ fun CaptureScreen(
                     )
                 }
 
-                // Center: Dual Interactive Pills (ML Preset + Aspect & Resolution Customizer)
+                // Center: Interactive Pills (Project Selector + ML Preset + Aspect & Resolution Customizer)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Left Pill: ML Architecture Preset
+                    // Project Selector Pill
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color(0x55000000))
-                            .border(1.dp, Color(0x35FFFFFF), RoundedCornerShape(20.dp))
-                            .clickable { showMlPresetModal = true }
-                            .padding(horizontal = 10.dp, vertical = 7.dp)
-                            .testTag("top_preset_pill"),
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0x700F172A))
+                            .border(1.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                            .clickable { showProjectSwitchSheet = true }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .testTag("top_project_pill"),
                         contentAlignment = Alignment.Center
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = "Ganti Proyek",
+                                tint = NeonCyan,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = (activeProject?.name?.take(10) ?: "Proyek") + " ▾",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    // Left Pill: ML Architecture Preset
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0x60000000))
+                            .border(1.dp, Color(0x35FFFFFF), RoundedCornerShape(16.dp))
+                            .clickable { showMlPresetModal = true }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .testTag("top_preset_pill"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             Text(
                                 text = selectedMlPreset?.iconTag ?: "⚡",
@@ -452,14 +519,14 @@ fun CaptureScreen(
                         }
                     }
 
-                    // Right Pill: Aspect Ratio & Resolution (e.g. 1:1 • 224x224 • ~18KB ▾)
+                    // Right Pill: Aspect Ratio & Resolution
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color(0x65000000))
-                            .border(1.dp, NeonCyan.copy(alpha = 0.7f), RoundedCornerShape(20.dp))
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0x60000000))
+                            .border(1.dp, NeonCyan.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
                             .clickable { showAspectResolutionSheet = true }
-                            .padding(horizontal = 10.dp, vertical = 7.dp)
+                            .padding(horizontal = 9.dp, vertical = 6.dp)
                             .testTag("top_resolution_pill"),
                         contentAlignment = Alignment.Center
                     ) {
@@ -474,7 +541,7 @@ fun CaptureScreen(
                                     .background(NeonCyan)
                             )
                             Text(
-                                text = "${aspectRatio.displayName} • ${currentDim.displayString} • ~${currentDim.estimatedKb * compressionQuality / 88}KB ▾",
+                                text = "${aspectRatio.displayName} • ${currentDim.displayString} ▾",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = NeonCyan
@@ -483,53 +550,50 @@ fun CaptureScreen(
                     }
                 }
 
-                // Right: Flash Toggle, Stats shortcut, and Settings Circle
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (onNavigateToStats != null) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(Color(0x40000000))
-                                .border(1.dp, GlassBorder, CircleShape)
-                                .clickable { onNavigateToStats() }
-                                .testTag("top_stats_button"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.BarChart,
-                                contentDescription = "Statistik Dataset",
-                                tint = NeonCyan,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-
+                // Right: Flash Button, Stats shortcut, and Dataset Menu Button
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Flash Mode Button with dynamic icon and indicator
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(38.dp)
                             .clip(CircleShape)
-                            .background(if (flashSimulated) Color.White else Color(0x40000000))
-                            .border(1.dp, GlassBorder, CircleShape)
-                            .clickable {
-                                flashSimulated = !flashSimulated
-                            }
+                            .background(
+                                when (flashMode) {
+                                    CameraFlashMode.ALWAYS_ON -> NeonAmber.copy(alpha = 0.25f)
+                                    CameraFlashMode.OFF -> Color(0x50000000)
+                                    else -> NeonCyan.copy(alpha = 0.2f)
+                                }
+                            )
+                            .border(
+                                1.dp,
+                                when (flashMode) {
+                                    CameraFlashMode.ALWAYS_ON -> NeonAmber
+                                    CameraFlashMode.OFF -> GlassBorder
+                                    else -> NeonCyan
+                                },
+                                CircleShape
+                            )
+                            .clickable { showFlashDialog = true }
                             .testTag("top_flash_button"),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.FlashOn,
-                            contentDescription = "Flash",
-                            tint = if (flashSimulated) Color.Black else Color.White,
+                            imageVector = flashMode.icon,
+                            contentDescription = "Flash: ${flashMode.label}",
+                            tint = when (flashMode) {
+                                CameraFlashMode.ALWAYS_ON -> NeonAmber
+                                CameraFlashMode.OFF -> Color.White.copy(alpha = 0.8f)
+                                else -> NeonCyan
+                            },
                             modifier = Modifier.size(18.dp)
                         )
                     }
 
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(38.dp)
                             .clip(CircleShape)
-                            .background(Color(0x40000000))
+                            .background(Color(0x50000000))
                             .border(1.dp, GlassBorder, CircleShape)
                             .clickable { showDatasetManagementSheet = true }
                             .testTag("top_settings_button"),
@@ -1092,6 +1156,40 @@ fun CaptureScreen(
                 threshold = blurThreshold,
                 preventCapture = preventBlurryCapture,
                 onDismiss = { showBlurSettingsDialog = false }
+            )
+        }
+
+        // Dialog: Camera Flash Mode Selection (Auto, Off, On, Always On)
+        if (showFlashDialog) {
+            FlashModeSelectionDialog(
+                currentMode = flashMode,
+                hasFlashUnit = activeCamera?.cameraInfo?.hasFlashUnit() ?: true,
+                onModeSelected = { mode ->
+                    flashMode = mode
+                    showFlashDialog = false
+                    if ((mode == CameraFlashMode.ON || mode == CameraFlashMode.ALWAYS_ON) &&
+                        activeCamera?.cameraInfo?.hasFlashUnit() == false
+                    ) {
+                        Toast.makeText(
+                            context,
+                            "Perangkat ini tidak memiliki unit lampu kilat hardware (LED Flash)",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+                onDismiss = { showFlashDialog = false }
+            )
+        }
+
+        // Project Switcher Bottom Sheet
+        if (showProjectSwitchSheet) {
+            ProjectSwitchBottomSheet(
+                viewModel = viewModel,
+                onDismissRequest = { showProjectSwitchSheet = false },
+                onGoToProjectHub = {
+                    showProjectSwitchSheet = false
+                    viewModel.switchProject()
+                }
             )
         }
     }

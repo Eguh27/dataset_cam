@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.db.AppDatabase
 import com.example.data.db.DatasetClassEntity
+import com.example.data.db.DatasetProjectEntity
 import com.example.data.db.DatasetSampleEntity
 import com.example.data.model.AspectRatioPreset
 import com.example.data.model.AugmentationConfig
@@ -26,10 +27,13 @@ import com.example.processing.BlurDetector
 import com.example.processing.ImageProcessingUtility
 import com.example.processing.ImageProcessor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -43,10 +47,28 @@ class DatasetViewModel(application: Application) : AndroidViewModel(application)
     private val database = AppDatabase.getDatabase(application, viewModelScope)
     private val repository = DatasetRepository(application, database.datasetDao())
 
-    val allClasses: StateFlow<List<DatasetClassEntity>> = repository.allClasses
+    // All available projects
+    val allProjects: StateFlow<List<DatasetProjectEntity>> = repository.allProjects
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val allSamples: StateFlow<List<DatasetSampleEntity>> = repository.allSamples
+    // Active project state (null indicates user is at initial Project Hub screen)
+    private val _activeProject = MutableStateFlow<DatasetProjectEntity?>(null)
+    val activeProject: StateFlow<DatasetProjectEntity?> = _activeProject.asStateFlow()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val allClasses: StateFlow<List<DatasetClassEntity>> = _activeProject
+        .flatMapLatest { proj ->
+            if (proj == null) flowOf(emptyList())
+            else repository.getClassesForProject(proj.id)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val allSamples: StateFlow<List<DatasetSampleEntity>> = _activeProject
+        .flatMapLatest { proj ->
+            if (proj == null) flowOf(emptyList())
+            else repository.getSamplesForProject(proj.id)
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Camera Presets
@@ -345,14 +367,83 @@ class DatasetViewModel(application: Application) : AndroidViewModel(application)
         _currentClassShotCount.value = 0
     }
 
+    // ==========================================
+    // PROJECT MANAGEMENT (Hub, Create, Switch, Delete)
+    // ==========================================
+
+    fun selectProject(project: DatasetProjectEntity) {
+        _activeProject.value = project
+        _selectedClass.value = null
+        val matchedAspect = AspectRatioPreset.entries.find { it.displayName == project.targetAspectRatio }
+        if (matchedAspect != null) {
+            _aspectRatio.value = matchedAspect
+        }
+        val sanitizedName = project.name.trim().replace(Regex("[^a-zA-Z0-9_-]"), "_").ifEmpty { "dataset" }
+        _folderConfig.value = _folderConfig.value.copy(rootFolderName = sanitizedName)
+        _hudNotification.value = "Proyek aktif: ${project.name}"
+    }
+
+    fun switchProject() {
+        _activeProject.value = null
+        _selectedClass.value = null
+    }
+
+    fun createNewProject(
+        name: String,
+        description: String = "",
+        aspectRatio: AspectRatioPreset = AspectRatioPreset.SQUARE_1_1,
+        resolution: String = "224x224",
+        classNames: List<String> = emptyList(),
+        onCreated: (DatasetProjectEntity) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val palette = listOf("#38BDF8", "#A855F7", "#10B981", "#F43F5E", "#F59E0B", "#EC4899", "#8B5CF6")
+            val initialClasses = if (classNames.isNotEmpty()) {
+                classNames.filter { it.isNotBlank() }.mapIndexed { idx, cName ->
+                    cName.trim() to palette[idx % palette.size]
+                }
+            } else {
+                listOf(
+                    "class_a" to "#38BDF8",
+                    "class_b" to "#A855F7",
+                    "normal" to "#10B981",
+                    "anomaly" to "#F43F5E"
+                )
+            }
+            val newProject = repository.createProject(
+                name = name,
+                description = description,
+                targetAspectRatio = aspectRatio.displayName,
+                defaultResolution = resolution,
+                initialClasses = initialClasses
+            )
+            selectProject(newProject)
+            withContext(Dispatchers.Main) {
+                onCreated(newProject)
+            }
+        }
+    }
+
+    fun deleteProject(project: DatasetProjectEntity) {
+        viewModelScope.launch {
+            repository.deleteProject(project)
+            if (_activeProject.value?.id == project.id) {
+                _activeProject.value = null
+                _selectedClass.value = null
+            }
+            _hudNotification.value = "Proyek '${project.name}' berhasil dihapus"
+        }
+    }
+
     fun toggleAutoCategorization(enabled: Boolean) {
         _autoCategorization.value = enabled
         _currentClassShotCount.value = 0
     }
 
     fun addNewClass(name: String, colorHex: String, description: String = "") {
+        val projId = _activeProject.value?.id ?: 1L
         viewModelScope.launch {
-            val newId = repository.addClass(name, colorHex, description)
+            val newId = repository.addClassToProject(projId, name, colorHex, description)
             _hudNotification.value = "Kategori folder '$name' berhasil dibuat"
         }
     }
@@ -371,6 +462,17 @@ class DatasetViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repository.deleteSampleWithAugmentations(sample)
             _hudNotification.value = "Sample dihapus"
+        }
+    }
+
+    fun deleteSamplesBatch(samples: List<DatasetSampleEntity>, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            _isProcessing.value = true
+            val count = samples.size
+            repository.deleteSamplesBatch(samples)
+            _hudNotification.value = "$count gambar berhasil dihapus"
+            _isProcessing.value = false
+            onComplete()
         }
     }
 
@@ -416,7 +518,7 @@ class DatasetViewModel(application: Application) : AndroidViewModel(application)
                     val timestamp = System.currentTimeMillis()
                     val timeStr = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date(timestamp))
 
-                    val classFolder = repository.getDatasetFolder(targetClass.name)
+                    val classFolder = repository.getDatasetFolder(targetClass.projectId, targetClass.name)
                     val baseFileName = "${targetClass.name}_${timeStr}_orig.$ext"
                     val baseFile = File(classFolder, baseFileName)
 
@@ -425,6 +527,7 @@ class DatasetViewModel(application: Application) : AndroidViewModel(application)
 
                     // Insert base sample in Room
                     val baseSample = DatasetSampleEntity(
+                        projectId = targetClass.projectId,
                         classId = targetClass.id,
                         className = targetClass.name,
                         filePath = baseFile.absolutePath,
@@ -458,6 +561,7 @@ class DatasetViewModel(application: Application) : AndroidViewModel(application)
                             val augSize = ImageProcessor.saveBitmapToFile(variant.bitmap, augFile, isPng, qualitySetting)
 
                             val augSample = DatasetSampleEntity(
+                                projectId = targetClass.projectId,
                                 classId = targetClass.id,
                                 className = targetClass.name,
                                 filePath = augFile.absolutePath,
@@ -602,9 +706,10 @@ class DatasetViewModel(application: Application) : AndroidViewModel(application)
             _isProcessing.value = true
             withContext(Dispatchers.IO) {
                 try {
-                    val classA = repository.getOrCreateClass("class_a", "#38BDF8")
-                    val classB = repository.getOrCreateClass("class_b", "#C084FC")
-                    val classC = repository.getOrCreateClass("class_c", "#F472B6")
+                    val currentProjId = _activeProject.value?.id ?: 1L
+                    val classA = repository.getOrCreateClassInProject(currentProjId, "class_a", "#38BDF8")
+                    val classB = repository.getOrCreateClassInProject(currentProjId, "class_b", "#C084FC")
+                    val classC = repository.getOrCreateClassInProject(currentProjId, "class_c", "#F472B6")
 
                     val presets = listOf(
                         Triple(classA, AspectRatioPreset.SQUARE_1_1, "TRAIN"),
@@ -640,12 +745,13 @@ class DatasetViewModel(application: Application) : AndroidViewModel(application)
                         paint.color = android.graphics.Color.WHITE
                         canvas.drawCircle(w / 2f, h / 2f, minOf(w, h) * 0.12f, paint)
 
-                        val folder = repository.getDatasetFolder(cls.name)
+                        val folder = repository.getDatasetFolder(currentProjId, cls.name)
                         val fileName = "${cls.name}_demo_${now + idx}_${aspect.displayName.replace(':', '_')}.jpg"
                         val file = File(folder, fileName)
                         val sizeBytes = ImageProcessor.saveBitmapToFile(bitmap, file, false, 85)
 
                         val sample = DatasetSampleEntity(
+                            projectId = currentProjId,
                             classId = cls.id,
                             className = cls.name,
                             filePath = file.absolutePath,
@@ -713,7 +819,7 @@ class DatasetViewModel(application: Application) : AndroidViewModel(application)
                     val timeStr = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date(timestamp))
 
                     if (saveAsNew) {
-                        val classFolder = repository.getDatasetFolder(sample.className)
+                        val classFolder = repository.getDatasetFolder(sample.projectId, sample.className)
                         val ext = if (isPng) "png" else "jpg"
                         val newFileName = "${sample.className}_${timeStr}_custom_aug.$ext"
                         val newFile = File(classFolder, newFileName)
@@ -728,6 +834,7 @@ class DatasetViewModel(application: Application) : AndroidViewModel(application)
 
                         val newEntity = sample.copy(
                             id = 0L,
+                            projectId = sample.projectId,
                             filePath = newFile.absolutePath,
                             fileName = newFileName,
                             relativePath = "${sample.className}/$newFileName",

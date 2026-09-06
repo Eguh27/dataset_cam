@@ -102,4 +102,19 @@ class ExampleUnitTest {
     assertEquals(true, resultBlurry.isBlurry)
     assertTrue(resultBlurry.score < 50)
   }
+
+  @Test
+  fun testCameraFlashModes_allFourRequiredModesExist() {
+    val modes = com.example.ui.components.CameraFlashMode.entries
+    assertEquals(4, modes.size)
+    assertTrue(modes.any { it == com.example.ui.components.CameraFlashMode.AUTO })
+    assertTrue(modes.any { it == com.example.ui.components.CameraFlashMode.OFF })
+    assertTrue(modes.any { it == com.example.ui.components.CameraFlashMode.ON })
+    assertTrue(modes.any { it == com.example.ui.components.CameraFlashMode.ALWAYS_ON })
+
+    assertEquals("auto", com.example.ui.components.CameraFlashMode.AUTO.id)
+    assertEquals("off", com.example.ui.components.CameraFlashMode.OFF.id)
+    assertEquals("on", com.example.ui.components.CameraFlashMode.ON.id)
+    assertEquals("always_on", com.example.ui.components.CameraFlashMode.ALWAYS_ON.id)
+  }
 }

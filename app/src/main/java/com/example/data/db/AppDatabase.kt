@@ -10,8 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [DatasetClassEntity::class, DatasetSampleEntity::class],
-    version = 1,
+    entities = [DatasetProjectEntity::class, DatasetClassEntity::class, DatasetSampleEntity::class],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -27,7 +27,10 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "ml_dataset_studio.db"
-                ).addCallback(DatabaseCallback(scope)).build()
+                )
+                    .fallbackToDestructiveMigration()
+                    .addCallback(DatabaseCallback(scope))
+                    .build()
                 INSTANCE = instance
                 instance
             }
@@ -40,39 +43,52 @@ abstract class AppDatabase : RoomDatabase() {
                 super.onCreate(db)
                 INSTANCE?.let { database ->
                     scope.launch(Dispatchers.IO) {
-                        populateInitialClasses(database.datasetDao())
+                        populateInitialData(database.datasetDao())
                     }
                 }
             }
 
-            suspend fun populateInitialClasses(dao: DatasetDao) {
-                if (dao.getClassCount() == 0) {
+            suspend fun populateInitialData(dao: DatasetDao) {
+                if (dao.getProjectCount() == 0) {
+                    val defaultProjectId = dao.insertProject(
+                        DatasetProjectEntity(
+                            name = "Klasifikasi Umum (Standar)",
+                            description = "Proyek dataset awal dengan kategori baseline machine learning.",
+                            targetAspectRatio = "1:1",
+                            defaultResolution = "224x224"
+                        )
+                    )
+
                     dao.insertClass(
                         DatasetClassEntity(
+                            projectId = defaultProjectId,
                             name = "class_a",
                             colorHex = "#38BDF8", // Cyan
-                            description = "Primary target subject"
+                            description = "Target subjek utama"
                         )
                     )
                     dao.insertClass(
                         DatasetClassEntity(
+                            projectId = defaultProjectId,
                             name = "class_b",
                             colorHex = "#A855F7", // Purple
-                            description = "Secondary comparison subject"
+                            description = "Subjek pembanding sekunder"
                         )
                     )
                     dao.insertClass(
                         DatasetClassEntity(
+                            projectId = defaultProjectId,
                             name = "normal",
                             colorHex = "#10B981", // Emerald Green
-                            description = "Standard baseline condition"
+                            description = "Kondisi standar / baseline"
                         )
                     )
                     dao.insertClass(
                         DatasetClassEntity(
+                            projectId = defaultProjectId,
                             name = "anomaly",
                             colorHex = "#F43F5E", // Rose Red
-                            description = "Defect or outlier condition"
+                            description = "Cacat atau kondisi outlier"
                         )
                     )
                 }

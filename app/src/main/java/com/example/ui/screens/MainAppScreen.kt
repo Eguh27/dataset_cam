@@ -83,7 +83,7 @@ fun MainAppScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(WarmPlumCanvas)
+            .background(DarkCanvas)
     ) {
         // Content Area with smooth animated crossfade
         Crossfade(
@@ -130,7 +130,7 @@ fun MainAppScreen(
                 shape = RoundedCornerShape(28.dp),
                 borderColor = GlassBorder,
                 backgroundBrush = Brush.verticalGradient(
-                    colors = listOf(Color(0xEE2A171B), Color(0xF21C0F12))
+                    colors = listOf(Color(0xEE0F172A), Color(0xF2090D14))
                 ),
                 modifier = Modifier
                     .fillMaxWidth()

@@ -5,10 +5,37 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "dataset_classes")
+@Entity(tableName = "dataset_projects")
+data class DatasetProjectEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val name: String,
+    val description: String = "",
+    val targetAspectRatio: String = "1:1",
+    val defaultResolution: String = "224x224",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "dataset_classes",
+    foreignKeys = [
+        ForeignKey(
+            entity = DatasetProjectEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["projectId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["projectId"]),
+        Index(value = ["projectId", "name"], unique = true)
+    ]
+)
 data class DatasetClassEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    val projectId: Long = 1L,
     val name: String,
     val colorHex: String = "#38BDF8", // Cyan / Neon blue accent
     val description: String = "",
@@ -23,10 +50,17 @@ data class DatasetClassEntity(
             parentColumns = ["id"],
             childColumns = ["classId"],
             onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = DatasetProjectEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["projectId"],
+            onDelete = ForeignKey.CASCADE
         )
     ],
     indices = [
         Index(value = ["classId"]),
+        Index(value = ["projectId"]),
         Index(value = ["className"]),
         Index(value = ["parentSampleId"])
     ]
@@ -34,6 +68,7 @@ data class DatasetClassEntity(
 data class DatasetSampleEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    val projectId: Long = 1L,
     val classId: Long,
     val className: String,
     val filePath: String,

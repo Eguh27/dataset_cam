@@ -3,58 +3,64 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
-// Warm Plum & Obsidian Palette (as featured in reference mockup)
-val WarmPlumCanvas = Color(0xFF221417)
-val WarmPlumSurface = Color(0xFF2C191D)
-val WarmPlumSurfaceElevated = Color(0xFF3B2126)
-val WarmPlumDark = Color(0xFF180D10)
-val WarmPlumSheet = Color(0xEB331D22)
+// Modern Obsidian & Slate Palette
+val SlateDark950 = Color(0xFF090D14)
+val SlateDark900 = Color(0xFF0F172A)
+val SlateDark800 = Color(0xFF1E293B)
+val SlateDark700 = Color(0xFF334155)
 
-// Neon & Pastel Accents
+// Aliases mapped to unified Slate Obsidian
+val WarmPlumCanvas = SlateDark950
+val WarmPlumSurface = SlateDark900
+val WarmPlumSurfaceElevated = SlateDark800
+val WarmPlumDark = Color(0xFF06090E)
+val WarmPlumSheet = Color(0xF00F172A)
+
+// Focused, cohesive accents (Precision Cobalt & Sky Cyan)
 val NeonCyan = Color(0xFF38BDF8)
 val NeonCyanDim = Color(0xFF0284C7)
-val NeonPurple = Color(0xFFC084FC)
-val NeonPurpleDim = Color(0xFF9333EA)
-val NeonEmerald = Color(0xFF34D399)
-val NeonRose = Color(0xFFF472B6)
-val NeonAmber = Color(0xFFFBBF24)
+val NeonPurple = Color(0xFF818CF8)
+val NeonPurpleDim = Color(0xFF6366F1)
+val NeonEmerald = Color(0xFF10B981)
+val NeonRose = Color(0xFFF43F5E)
+val NeonAmber = Color(0xFFF59E0B)
 
 // Canvas aliases
-val DarkCanvas = WarmPlumCanvas
-val DarkSurface = WarmPlumSurface
-val DarkSurfaceElevated = WarmPlumSurfaceElevated
-val DarkSurfaceHighlight = Color(0xFF4A2B31)
+val DarkCanvas = SlateDark950
+val DarkSurface = SlateDark900
+val DarkSurfaceElevated = SlateDark800
+val DarkSurfaceHighlight = Color(0xFF283548)
 
 // Glassmorphism Token Colors
-val GlassBackground = Color(0x28FFFFFF)
-val GlassBackgroundSolid = Color(0x38FFFFFF)
-val GlassBorder = Color(0x2EFFFFFF)
-val GlassBorderActive = Color(0x80C084FC)
-val GlassOverlay = Color(0xCC180D10)
-val FrostedStripBackground = Color(0x4D362226)
+val GlassBackground = Color(0x1A38BDF8)
+val GlassBackgroundSolid = Color(0x221E293B)
+val GlassBorder = Color(0x2694A3B8)
+val GlassBorderActive = Color(0x8038BDF8)
+val GlassOverlay = Color(0xDC090D14)
+val FrostedStripBackground = Color(0x660F172A)
 
-// Text & Accents
-val TextPrimary = Color(0xFFFFFFFF)
-val TextSecondary = Color(0xFFD4C2C5)
-val TextMuted = Color(0xFF9E8B8F)
+// Text & Accents (High contrast, clean typography)
+val TextPrimary = Color(0xFFF8FAFC)
+val TextSecondary = Color(0xFF94A3B8)
+val TextMuted = Color(0xFF64748B)
 
-// Liquid Animation Gradients
+// Refined Gradients
 val LiquidCyanViolet = Brush.linearGradient(
-    colors = listOf(Color(0xFFC084FC), Color(0xFFF472B6), Color(0xFF38BDF8))
+    colors = listOf(Color(0xFF38BDF8), Color(0xFF6366F1))
 )
 
 val LiquidEmeraldCyan = Brush.linearGradient(
-    colors = listOf(Color(0xFF34D399), Color(0xFF38BDF8))
+    colors = listOf(Color(0xFF10B981), Color(0xFF0EA5E9))
 )
 
 val GlassCardGradient = Brush.verticalGradient(
-    colors = listOf(Color(0x38FFFFFF), Color(0x18FFFFFF))
+    colors = listOf(Color(0x241E293B), Color(0x141E293B))
 )
 
 val DarkBackgroundGradient = Brush.verticalGradient(
-    colors = listOf(Color(0xFF2A181C), Color(0xFF201215), Color(0xFF160B0E))
+    colors = listOf(Color(0xFF0F172A), Color(0xFF090D14))
 )
 
 val BlueActionGradient = Brush.linearGradient(
-    colors = listOf(Color(0xFF3B82F6), Color(0xFF6366F1))
+    colors = listOf(Color(0xFF0EA5E9), Color(0xFF2563EB))
 )
